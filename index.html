@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Production Dashboard</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --border: #e3e6ea; --text: #1b1f24; --muted: #6b7280;
+    --accent: #2563eb; --good: #16a34a; --warn: #d97706; --bad: #dc2626; --idle: #64748b;
+    --grid: #eceff3; --target: #111827;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1216; --panel: #171b21; --border: #262c34; --text: #e6e9ee; --muted: #8b95a3;
+      --accent: #60a5fa; --good: #4ade80; --warn: #fbbf24; --bad: #f87171; --idle: #94a3b8;
+      --grid: #222830; --target: #e6e9ee;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1216; --panel: #171b21; --border: #262c34; --text: #e6e9ee; --muted: #8b95a3;
+    --accent: #60a5fa; --good: #4ade80; --warn: #fbbf24; --bad: #f87171; --idle: #94a3b8;
+    --grid: #222830; --target: #e6e9ee;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
+    padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  header h1 { margin: 0; font-size: 18px; font-weight: 650; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .meta { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; color: var(--muted); font-size: 13px; }
+  .live { display: inline-flex; align-items: center; gap: 6px; color: var(--good); font-weight: 600; }
+  .live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--good); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  #clock { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; }
+  button.theme {
+    border: 1px solid var(--border); background: transparent; color: var(--text);
+    border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit;
+  }
+  main { padding: 20px 24px 32px; display: grid; gap: 16px; max-width: 1440px; margin: 0 auto; }
+  .kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+  .kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .kpi .value { font-size: 28px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .kpi .foot { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .bar { height: 6px; border-radius: 3px; background: var(--grid); margin-top: 10px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); transition: width .6s; }
+  .good { color: var(--good); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .row { display: grid; gap: 16px; grid-template-columns: 2fr 1fr; }
+  @media (max-width: 960px) { .row { grid-template-columns: 1fr; } }
+  h2 { margin: 0 0 12px; font-size: 14px; font-weight: 650; display: flex; justify-content: space-between; align-items: baseline; }
+  h2 small { color: var(--muted); font-weight: 400; font-size: 12px; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { fill: var(--muted); font-size: 11px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+  .pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .s-running { color: var(--good); } .s-idle { color: var(--idle); } .s-down { color: var(--bad); } .s-changeover { color: var(--warn); }
+  .mini { display: inline-block; width: 70px; height: 6px; border-radius: 3px; background: var(--grid); vertical-align: middle; margin-left: 8px; overflow: hidden; }
+  .mini span { display: block; height: 100%; }
+  .alerts { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow-y: auto; }
+  .alerts li { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .alerts li:last-child { border-bottom: 0; }
+  .alerts .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; }
+  .alerts .t { color: var(--muted); font-size: 12px; grid-column: 2; }
+  .pareto-row { display: grid; grid-template-columns: 120px 1fr 52px; gap: 10px; align-items: center; margin: 8px 0; font-size: 13px; }
+  .pareto-row .track { height: 14px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+  .pareto-row .track span { display: block; height: 100%; background: var(--warn); border-radius: 4px; transition: width .6s; }
+  .pareto-row .mins { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  @media (max-width: 600px) {
+    header, main { padding-left: 16px; padding-right: 16px; }
+    .pareto-row { grid-template-columns: 96px 1fr 44px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Plant A · Production Dashboard</h1>
+    <div class="sub" id="shiftLabel">Shift B · 14:00–22:00</div>
+  </div>
+  <div class="meta">
+    <span class="live">Live</span>
+    <span id="clock">--:--:--</span>
+    <span>Updated <span id="updated">just now</span></span>
+    <button class="theme" id="themeBtn" type="button">Toggle theme</button>
+  </div>
+</header>
+
+<main>
+  <section class="kpis" id="kpis"></section>
+
+  <div class="row">
+    <section class="card">
+      <h2>Hourly output vs target <small>units per hour, current shift</small></h2>
+      <svg id="hourly" viewBox="0 0 720 260" role="img" aria-label="Hourly output versus target chart"></svg>
+      <div class="legend">
+        <span><i style="background:var(--good)"></i>At or above target</span>
+        <span><i style="background:var(--warn)"></i>Below target</span>
+        <span><i style="background:var(--target);height:2px;vertical-align:3px"></i>Target</span>
+      </div>
+    </section>
+    <section class="card">
+      <h2>OEE trend <small>last 12 hours</small></h2>
+      <svg id="oeeTrend" viewBox="0 0 360 260" role="img" aria-label="OEE trend line chart"></svg>
+      <div class="legend"><span><i style="background:var(--accent)"></i>OEE %</span><span><i style="background:var(--muted);height:2px;vertical-align:3px"></i>85% world-class</span></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Line status <small id="lineSummary"></small></h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Line</th><th>Status</th><th>Product</th><th>Operator</th>
+            <th class="num">Rate / hr</th><th class="num">Produced</th><th class="num">Target</th>
+            <th class="num">Scrap</th><th>OEE</th>
+          </tr>
+        </thead>
+        <tbody id="lines"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="row">
+    <section class="card">
+      <h2>Downtime by reason <small id="dtTotal"></small></h2>
+      <div id="pareto"></div>
+    </section>
+    <section class="card">
+      <h2>Alerts <small id="alertCount"></small></h2>
+      <ul class="alerts" id="alerts"></ul>
+    </section>
+  </div>
+</main>
+
+<script>
+(() => {
+  // ---------- Simulated data (replace with your API calls) ----------
+  const SHIFT_START = 14, SHIFT_HOURS = 8, HOURLY_TARGET = 1200;
+
+  const lines = [
+    { id: "L1", product: "Bottle 500ml",  operator: "R. Patil",   status: "running",    rate: 212, produced: 0, target: 1700, scrap: 0.9, oee: 88 },
+    { id: "L2", product: "Bottle 1L",     operator: "S. Kulkarni", status: "running",   rate: 188, produced: 0, target: 1600, scrap: 1.4, oee: 82 },
+    { id: "L3", product: "Cap 28mm",      operator: "A. Deshmukh", status: "changeover", rate: 0,  produced: 0, target: 1500, scrap: 2.1, oee: 64 },
+    { id: "L4", product: "Label Roll A",  operator: "P. Joshi",   status: "running",    rate: 230, produced: 0, target: 1800, scrap: 0.6, oee: 91 },
+    { id: "L5", product: "Carton 12x",    operator: "M. Shinde",  status: "down",       rate: 0,   produced: 0, target: 1400, scrap: 3.2, oee: 52 },
+    { id: "L6", product: "Bottle 250ml",  operator: "K. More",    status: "running",    rate: 205, produced: 0, target: 1600, scrap: 1.1, oee: 85 },
+  ];
+
+  const downtime = [
+    { reason: "Mechanical failure", mins: 46 },
+    { reason: "Changeover",         mins: 38 },
+    { reason: "Material shortage",  mins: 22 },
+    { reason: "Quality hold",       mins: 15 },
+    { reason: "Planned maintenance", mins: 12 },
+    { reason: "Other",              mins: 7 },
+  ];
+
+  let alerts = [
+    { level: "bad",  msg: "L5 stopped: conveyor motor overload", ago: 4 },
+    { level: "warn", msg: "L3 changeover exceeding standard time (25 min)", ago: 11 },
+    { level: "warn", msg: "L2 scrap rate above 1.2% threshold", ago: 27 },
+    { level: "good", msg: "L4 hit hourly target for 3rd consecutive hour", ago: 41 },
+    { level: "warn", msg: "Resin silo B below 20% — reorder triggered", ago: 58 },
+  ];
+
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const hourly = Array.from({ length: SHIFT_HOURS }, (_, i) => i < 5 ? Math.round(rnd(1000, 1320)) : null);
+  const oeeHistory = Array.from({ length: 12 }, () => Math.round(rnd(68, 88)));
+
+  // seed produced counts
+  lines.forEach(l => l.produced = Math.round(l.target * rnd(0.5, 0.75)));
+
+  // ---------- Helpers ----------
+  const $ = id => document.getElementById(id);
+  const fmt = n => n.toLocaleString("en-IN");
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (tag, attrs = {}, text) => {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  const cls = (v, good, warn) => v >= good ? "good" : v >= warn ? "warn" : "bad";
+
+  // ---------- KPIs ----------
+  function renderKpis() {
+    const produced = lines.reduce((s, l) => s + l.produced, 0);
+    const target = lines.reduce((s, l) => s + l.target, 0);
+    const running = lines.filter(l => l.status === "running");
+    const avgOee = Math.round(lines.reduce((s, l) => s + l.oee, 0) / lines.length);
+    const availability = Math.round(running.length / lines.length * 100 * 0.98);
+    const quality = (100 - lines.reduce((s, l) => s + l.scrap, 0) / lines.length).toFixed(1);
+    const performance = Math.min(99, Math.round(avgOee / (availability / 100) / (quality / 100)));
+    const dt = downtime.reduce((s, d) => s + d.mins, 0);
+    const attain = Math.round(produced / target * 100);
+
+    const items = [
+      { label: "Units produced", value: fmt(produced), foot: `of ${fmt(target)} shift target`, pct: attain },
+      { label: "Target attainment", value: attain + "%", cls: cls(attain, 95, 85), pct: attain },
+      { label: "OEE", value: avgOee + "%", cls: cls(avgOee, 85, 70), foot: "World-class ≥ 85%", pct: avgOee },
+      { label: "Availability", value: availability + "%", cls: cls(availability, 90, 75), pct: availability },
+      { label: "Performance", value: performance + "%", cls: cls(performance, 95, 85), pct: performance },
+      { label: "Quality", value: quality + "%", cls: cls(+quality, 99, 97), pct: +quality },
+      { label: "Downtime", value: dt + " min", cls: dt > 120 ? "bad" : dt > 60 ? "warn" : "good", foot: "this shift" },
+      { label: "Lines running", value: `${running.length} / ${lines.length}`, cls: running.length === lines.length ? "good" : "warn" },
+    ];
+    $("kpis").innerHTML = items.map(k => `
+      <div class="card kpi">
+        <div class="label">${k.label}</div>
+        <div class="value ${k.cls || ""}">${k.value}</div>
+        ${k.foot ? `<div class="foot">${k.foot}</div>` : ""}
+        ${k.pct != null ? `<div class="bar"><span style="width:${Math.min(100, k.pct)}%"></span></div>` : ""}
+      </div>`).join("");
+  }
+
+  // ---------- Hourly bar chart ----------
+  function renderHourly() {
+    const svg = $("hourly"); svg.innerHTML = "";
+    const W = 720, H = 260, m = { t: 12, r: 12, b: 28, l: 44 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const max = 1600, y = v => m.t + ih - v / max * ih;
+    for (let v = 0; v <= max; v += 400) {
+      svg.append(el("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: "var(--grid)" }));
+      svg.append(el("text", { x: m.l - 8, y: y(v) + 4, "text-anchor": "end" }, fmt(v)));
+    }
+    const bw = iw / SHIFT_HOURS;
+    hourly.forEach((v, i) => {
+      const x = m.l + i * bw;
+      const h = SHIFT_START + i;
+      svg.append(el("text", { x: x + bw / 2, y: H - 8, "text-anchor": "middle" }, `${String(h).padStart(2, "0")}:00`));
+      if (v == null) {
+        svg.append(el("rect", { x: x + bw * .2, y: m.t, width: bw * .6, height: ih, fill: "var(--grid)", opacity: .35, rx: 3 }));
+        return;
+      }
+      const r = el("rect", { x: x + bw * .2, y: y(v), width: bw * .6, height: m.t + ih - y(v), rx: 3,
+        fill: v >= HOURLY_TARGET ? "var(--good)" : "var(--warn)" });
+      r.append(el("title", {}, `${String(h).padStart(2, "0")}:00 — ${fmt(v)} units`));
+      svg.append(r);
+      svg.append(el("text", { x: x + bw / 2, y: y(v) - 5, "text-anchor": "middle" }, fmt(v)));
+    });
+    svg.append(el("line", { x1: m.l, x2: W - m.r, y1: y(HOURLY_TARGET), y2: y(HOURLY_TARGET),
+      stroke: "var(--target)", "stroke-width": 2, "stroke-dasharray": "6 4" }));
+    svg.append(el("text", { x: W - m.r, y: y(HOURLY_TARGET) - 6, "text-anchor": "end" }, `Target ${fmt(HOURLY_TARGET)}`));
+  }
+
+  // ---------- OEE trend ----------
+  function renderOee() {
+    const svg = $("oeeTrend"); svg.innerHTML = "";
+    const W = 360, H = 260, m = { t: 12, r: 12, b: 28, l: 36 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const min = 40, max = 100;
+    const x = i => m.l + i / (oeeHistory.length - 1) * iw;
+    const y = v => m.t + ih - (v - min) / (max - min) * ih;
+    for (let v = min; v <= max; v += 20) {
+      svg.append(el("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: "var(--grid)" }));
+      svg.append(el("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end" }, v + "%"));
+    }
+    svg.append(el("line", { x1: m.l, x2: W - m.r, y1: y(85), y2: y(85), stroke: "var(--muted)", "stroke-dasharray": "4 4" }));
+    const pts = oeeHistory.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+    svg.append(el("polygon", { points: `${x(0)},${y(min)} ${pts} ${x(oeeHistory.length - 1)},${y(min)}`, fill: "var(--accent)", opacity: .12 }));
+    svg.append(el("polyline", { points: pts, fill: "none", stroke: "var(--accent)", "stroke-width": 2.5, "stroke-linejoin": "round" }));
+    oeeHistory.forEach((v, i) => {
+      const c = el("circle", { cx: x(i), cy: y(v), r: i === oeeHistory.length - 1 ? 4.5 : 2.5, fill: "var(--accent)" });
+      c.append(el("title", {}, `${v}%`));
+      svg.append(c);
+      if (i % 3 === 0 || i === oeeHistory.length - 1)
+        svg.append(el("text", { x: x(i), y: H - 8, "text-anchor": "middle" }, i === oeeHistory.length - 1 ? "now" : `-${oeeHistory.length - 1 - i}h`));
+    });
+  }
+
+  // ---------- Line table ----------
+  const statusLabel = { running: "Running", idle: "Idle", down: "Down", changeover: "Changeover" };
+  function renderLines() {
+    $("lines").innerHTML = lines.map(l => {
+      const c = l.oee >= 85 ? "var(--good)" : l.oee >= 70 ? "var(--warn)" : "var(--bad)";
+      return `<tr>
+        <td><strong>${l.id}</strong></td>
+        <td><span class="pill s-${l.status}">${statusLabel[l.status]}</span></td>
+        <td>${l.product}</td>
+        <td>${l.operator}</td>
+        <td class="num">${fmt(l.rate)}</td>
+        <td class="num">${fmt(l.produced)}</td>
+        <td class="num">${fmt(l.target)}</td>
+        <td class="num ${l.scrap > 2 ? "bad" : l.scrap > 1.2 ? "warn" : ""}">${l.scrap.toFixed(1)}%</td>
+        <td>${l.oee}%<span class="mini"><span style="width:${l.oee}%;background:${c}"></span></span></td>
+      </tr>`;
+    }).join("");
+    const counts = lines.reduce((a, l) => (a[l.status] = (a[l.status] || 0) + 1, a), {});
+    $("lineSummary").textContent = Object.entries(counts).map(([k, v]) => `${v} ${statusLabel[k].toLowerCase()}`).join(" · ");
+  }
+
+  // ---------- Downtime pareto ----------
+  function renderPareto() {
+    const sorted = [...downtime].sort((a, b) => b.mins - a.mins);
+    const max = sorted[0].mins;
+    $("pareto").innerHTML = sorted.map(d => `
+      <div class="pareto-row">
+        <span>${d.reason}</span>
+        <div class="track"><span style="width:${d.mins / max * 100}%"></span></div>
+        <span class="mins">${d.mins}m</span>
+      </div>`).join("");
+    $("dtTotal").textContent = `${downtime.reduce((s, d) => s + d.mins, 0)} min total`;
+  }
+
+  // ---------- Alerts ----------
+  function renderAlerts() {
+    $("alerts").innerHTML = alerts.map(a => `
+      <li><span class="dot" style="background:var(--${a.level})"></span>
+        <span>${a.msg}</span>
+        <span class="t">${a.ago === 0 ? "just now" : a.ago + " min ago"}</span></li>`).join("");
+    const crit = alerts.filter(a => a.level === "bad").length;
+    $("alertCount").textContent = `${alerts.length} active · ${crit} critical`;
+  }
+
+  // ---------- Live simulation ----------
+  function tick() {
+    lines.forEach(l => {
+      if (l.status === "running") {
+        l.rate = Math.max(150, Math.round(l.rate + rnd(-8, 8)));
+        l.produced += Math.round(l.rate / 120);
+        l.oee = Math.max(60, Math.min(95, Math.round(l.oee + rnd(-1, 1))));
+      }
+      // occasional status changes
+      if (Math.random() < 0.03) {
+        if (l.status === "down" || l.status === "changeover") {
+          l.status = "running"; l.rate = Math.round(rnd(180, 220));
+          alerts.unshift({ level: "good", msg: `${l.id} back to running`, ago: 0 });
+        } else if (l.status === "running" && Math.random() < 0.3) {
+          l.status = "down"; l.rate = 0;
+          alerts.unshift({ level: "bad", msg: `${l.id} stopped: unplanned stop`, ago: 0 });
+        }
+      }
+      if (l.status !== "running") downtime[0].mins += Math.random() < 0.2 ? 1 : 0;
+    });
+    const cur = hourly.findIndex(v => v == null) - 1;
+    if (cur >= 0) hourly[cur] = Math.min(1550, hourly[cur] + Math.round(rnd(-5, 12)));
+    alerts = alerts.slice(0, 12);
+    renderAll();
+    $("updated").textContent = "just now";
+  }
+
+  function renderAll() { renderKpis(); renderHourly(); renderOee(); renderLines(); renderPareto(); renderAlerts(); }
+
+  function clock() {
+    const d = new Date();
+    $("clock").textContent = d.toLocaleTimeString("en-IN", { hour12: false });
+  }
+
+  // Age alerts each minute
+  setInterval(() => { alerts.forEach(a => a.ago++); renderAlerts(); }, 60000);
+
+  // Theme toggle (remembered per browser when storage is available)
+  const root = document.documentElement;
+  try { const t = localStorage.getItem("pd-theme"); if (t) root.dataset.theme = t; } catch (e) {}
+  $("themeBtn").addEventListener("click", () => {
+    const dark = root.dataset.theme
+      ? root.dataset.theme === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("pd-theme", root.dataset.theme); } catch (e) {}
+  });
+
+  renderAll(); clock();
+  setInterval(clock, 1000);
+  setInterval(tick, 3000);
+})();
+</script>
+</body>
+</html>
